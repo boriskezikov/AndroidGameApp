@@ -1,8 +1,10 @@
 package com.example.androidgameapp;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -13,6 +15,8 @@ import com.google.android.material.snackbar.Snackbar;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
@@ -31,30 +35,28 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
 
     private TextToSpeech textToSpeech;
-
     protected static final int RESULT_SPEECH = 1;
-
-    private static String myURL = "https://kezikov-spring-test.herokuapp.com/android?letter=";
-
     private static String lastLetter = null;
-
-
     private Button btnSpeak;
     private TextView txtText;
 
-    @SuppressLint("StaticFieldLeak")
+    private List<String> usedCities = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        System.out.println("ONCREATE");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         txtText = findViewById(R.id.txtText);
         btnSpeak = findViewById(R.id.mainButton);
+        requestAudioPermissions();
         btnSpeak.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -72,6 +74,7 @@ public class MainActivity extends Activity {
             textToSpeech.stop();
             textToSpeech.shutdown();
         }
+        System.out.println("OnPause");
         super.onPause();
     }
 
@@ -80,6 +83,8 @@ public class MainActivity extends Activity {
         if (textToSpeech != null) {
             textToSpeech.stop();
         }
+        System.out.println("OnsTROP");
+
         super.onStop();
     }
 
@@ -88,6 +93,8 @@ public class MainActivity extends Activity {
         if (textToSpeech != null) {
             textToSpeech.shutdown();
         }
+        System.out.println("ONDestroy");
+
         super.onDestroy();
     }
 
@@ -103,39 +110,18 @@ public class MainActivity extends Activity {
 
                     assert text != null;
                     String userCity = text.get(0);
-                    lastLetter = userCity.substring(userCity.length() - 1).toUpperCase();
-                    callServer();
-
-                    //txtText.setText(newCity);
+                    if (usedCities.contains(userCity)){
+                        speakOut("This city have already been");
+                    }
+                    else {
+                        usedCities.add(userCity);
+                        lastLetter = userCity.substring(userCity.length() - 1).toUpperCase();
+                        callServer();
+                    }
                 }
                 break;
             }
         }
-    }
-
-    public static String doGet(String url) throws IOException {
-
-        URL obj = new URL(url);
-        HttpURLConnection connection = (HttpURLConnection) obj.openConnection();
-
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
-        connection.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
-        connection.setRequestProperty("Content-Type", "application/json");
-
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String inputLine;
-        StringBuilder response = new StringBuilder();
-
-        while ((inputLine = bufferedReader.readLine()) != null) {
-            response.append(inputLine);
-        }
-        bufferedReader.close();
-
-        System.out.println("Response string: " + response.toString());
-
-
-        return response.toString();
     }
 
     @SuppressLint("StaticFieldLeak")
@@ -145,7 +131,7 @@ public class MainActivity extends Activity {
             protected String doInBackground(Void[] voids) {
                 String s = "";
                 try {
-                    s = doGet(myURL + lastLetter);
+                    s = doGet(getResources().getString(R.string.URL) + lastLetter);
                 } catch (IOException e) {
                     Toast.makeText(getApplicationContext(), "Cannot load cities list", Toast.LENGTH_LONG).show();
                 }
@@ -181,6 +167,82 @@ public class MainActivity extends Activity {
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
 
+    private static String doGet(String url) throws IOException {
+
+        URL obj = new URL(url);
+        HttpURLConnection connection = (HttpURLConnection) obj.openConnection();
+
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+        connection.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
+        connection.setRequestProperty("Content-Type", "application/json");
+
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+        String inputLine;
+        StringBuilder response = new StringBuilder();
+
+        while ((inputLine = bufferedReader.readLine()) != null) {
+            response.append(inputLine);
+        }
+        bufferedReader.close();
+
+        System.out.println("Response string: " + response.toString());
+
+
+        return response.toString();
+    }
+
+    private void requestAudioPermissions() {
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            //When permission is not granted by user, show them message why this permission is needed.
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.RECORD_AUDIO)) {
+                Toast.makeText(this, "Please grant permissions to record audio", Toast.LENGTH_LONG).show();
+
+                //Give user option to still opt-in the permissions
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.RECORD_AUDIO},
+                        1);
+
+            } else {
+                // Show user dialog to grant permission to record audio
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.RECORD_AUDIO},
+                        1);
+            }
+        }
+        //If permission is granted, then go ahead recording audio
+        else if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
+
+        }
+    }
+
+    //Handling callback
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case 1: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted, yay!
+                    System.out.println("Permission granted!");
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                    Toast.makeText(this, "Permissions Denied to record audio", Toast.LENGTH_LONG).show();
+                }
+            }
+        }
+    }
+
+    private void checkRepeats(){
+
+    }
 
 }
 
