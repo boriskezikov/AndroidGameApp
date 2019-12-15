@@ -5,25 +5,16 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.snackbar.Snackbar;
-
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
-import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -33,70 +24,39 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
 
     private TextToSpeech textToSpeech;
     protected static final int RESULT_SPEECH = 1;
-    private static String lastLetter = null;
+    private static String lastUserLetter = null;
+    private static String lastMachineLetter = null;
+    private TextView currentLives;
+    private static int initLivesNum = 5;
     private Button btnSpeak;
-    private TextView txtText;
-
+    private static String currentUserCity = null;
     private List<String> usedCities = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        System.out.println("ONCREATE");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        txtText = findViewById(R.id.txtText);
+        currentLives = findViewById(R.id.lives);
         btnSpeak = findViewById(R.id.mainButton);
+        setLives(initLivesNum);
         requestAudioPermissions();
-        btnSpeak.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, "en-US");
-                startActivityForResult(intent, RESULT_SPEECH);
-            }
+        btnSpeak.setOnClickListener(v -> {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, "en-US");
+            startActivityForResult(intent, RESULT_SPEECH);
         });
 
     }
 
-    @Override
-    public void onPause() {
-        if (textToSpeech != null) {
-            textToSpeech.stop();
-            textToSpeech.shutdown();
-        }
-        System.out.println("OnPause");
-        super.onPause();
-    }
-
-    @Override
-    public void onStop() {
-        if (textToSpeech != null) {
-            textToSpeech.stop();
-        }
-        System.out.println("OnsTROP");
-
-        super.onStop();
-    }
-
-    @Override
-    public void onDestroy() {
-        if (textToSpeech != null) {
-            textToSpeech.shutdown();
-        }
-        System.out.println("ONDestroy");
-
-        super.onDestroy();
-    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -104,65 +64,72 @@ public class MainActivity extends Activity {
         switch (requestCode) {
             case RESULT_SPEECH: {
                 if (resultCode == RESULT_OK && null != data) {
+                    ArrayList<String> text = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    currentUserCity = text != null ? text.get(0) : null;
 
-                    ArrayList<String> text = data
-                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-
-                    assert text != null;
-                    String userCity = text.get(0);
-                    if (usedCities.contains(userCity)){
-                        speakOut("This city have already been");
-                    }
-                    else {
-                        usedCities.add(userCity);
-                        lastLetter = userCity.substring(userCity.length() - 1).toUpperCase();
-                        callServer();
+                    if (checkUserCity(currentUserCity)) {
+                        usedCities.add(currentUserCity);
+                        getCity();
                     }
                 }
                 break;
             }
+            default:
+                throw new IllegalStateException("Unexpected value: " + requestCode);
         }
     }
 
     @SuppressLint("StaticFieldLeak")
-    private void callServer() {
+    private void getCity() {
         new AsyncTask<Void, String, String>() {
             @Override
             protected String doInBackground(Void[] voids) {
-                String s = "";
+                Boolean valid = true;
                 try {
-                    s = doGet(getResources().getString(R.string.URL) + lastLetter);
+                    valid = Boolean.valueOf(doGet(getResources().getString(R.string.VALIDATE_CITY) + currentUserCity));
                 } catch (IOException e) {
-                    Toast.makeText(getApplicationContext(), "Cannot load cities list", Toast.LENGTH_LONG).show();
+                    Toast.makeText(
+                            getApplicationContext(),
+                            getResources().getString(R.string.CONNECTION_ERROR_LOG),Toast.LENGTH_LONG)
+                            .show();
                 }
-                return s;
+                if (valid){
+                    lastUserLetter = currentUserCity.substring(currentUserCity.length() - 1).toUpperCase();
+                    String s = "";
+                    try {
+                        s = doGet(getResources().getString(R.string.GET_CITY) + lastUserLetter);
+                    } catch (IOException e) {
+                        Toast.makeText(
+                                getApplicationContext(),
+                                getResources().getString(R.string.CONNECTION_ERROR_LOG),Toast.LENGTH_LONG)
+                                .show();
+                    }
+                    return s;
+                }
+                else {
+                    return String.valueOf(valid);
+                }
             }
 
             @Override
             protected void onPostExecute(final String result) {
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        txtText.setText(result);
-                        textToSpeech = new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
-                            @Override
-                            public void onInit(int status) {
-                                Log.e("TTS", "TextToSpeech.OnInitListener.onInit...");
-                                speakOut(result);
-
-
-                            }
-                        });
+                runOnUiThread(() -> textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
+                    Log.e("TTS", "OnPostExecute with result: " + result);
+                    if(result.equals("false")){
+                        speakOut(getResources().getString(R.string.INCORRECT_CITY_PHRASE));
                     }
-                });
+                    else {
+                        speakOut(result);
+                        lastMachineLetter = result.substring(result.length() - 1);
+                        usedCities.add(result);
+                    }
+                }));
             }
         }.execute();
     }
 
     private void speakOut(String text) {
-        // Text to Speak
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
-        // A random String (Unique ID).
         String utteranceId = UUID.randomUUID().toString();
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
@@ -222,29 +189,98 @@ public class MainActivity extends Activity {
         }
     }
 
-    //Handling callback
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
         switch (requestCode) {
             case 1: {
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // permission was granted, yay!
-                    System.out.println("Permission granted!");
+                    Toast.makeText(this, "Permission granted!", Toast.LENGTH_LONG).show();
                 } else {
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
                     Toast.makeText(this, "Permissions Denied to record audio", Toast.LENGTH_LONG).show();
                 }
             }
         }
     }
-
-    private void checkRepeats(){
-
+    private void setLives(int lives) {
+        currentLives.setText(getResources().getString(R.string.LIVES_TEXT) + lives);
     }
 
+    private boolean checkUserCity(String city) {
+        if (Objects.isNull(city)) {
+            return false;
+        }
+        if (initLivesNum == 0) {
+            Toast.makeText(getApplicationContext(), "You loose!", Toast.LENGTH_SHORT).show();
+            initLivesNum = 5;
+            usedCities.clear();
+            textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
+                Log.e("TTS", "TextToSpeech.LIVES_OVER.");
+                speakOut(getResources().getString(R.string.LOOSE_TEXT));
+            });
+            return false;
+        }
+
+        if (Objects.nonNull(lastMachineLetter)){
+            if (!currentUserCity.substring(0, 1).toLowerCase().equals(lastMachineLetter)){
+                textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
+                    Log.e("TTS", "TextToSpeech.IncorrectLastLetter");
+                    speakOut(String.format(getResources().getString(R.string.INCORRECT_LAST_LATTER_PHRASE), lastMachineLetter));
+                });
+                return false;
+            }
+        }
+
+        if (usedCities.contains(city)) {
+            textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
+                Log.e("TTS", "TextToSpeech.USER_CITY_REPEATS");
+                speakOut(getResources().getString(R.string.ON_REPEAT_PHRASE));
+            });
+            initLivesNum -= 1;
+            setLives(initLivesNum);
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public void onPause() {
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+        }
+        System.out.println("OnPause");
+        super.onPause();
+    }
+
+    @Override
+    public void onStop() {
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+        }
+        System.out.println("OnsTROP");
+
+        super.onStop();
+    }
+
+    @Override
+    public void onDestroy() {
+        if (textToSpeech != null) {
+            textToSpeech.shutdown();
+        }
+        System.out.println("ONDestroy");
+
+        super.onDestroy();
+    }
+
+
+
 }
+
+
+
 
 
 
