@@ -26,6 +26,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".NetworkFailsActivity"
+            android:label="AndroidApiFail">
+        </activity>
     </application>
 
 </manifest>

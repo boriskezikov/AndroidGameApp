@@ -3,14 +3,16 @@ package com.example.androidgameapp;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
 
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
@@ -36,7 +38,7 @@ public class MainActivity extends Activity {
     private static String lastUserLetter = null;
     private static String lastMachineLetter = null;
     private TextView currentLives;
-    private static int initLivesNum = 5;
+    private static int initLivesNum = 1;
     private Button btnSpeak;
     private static String currentUserCity = null;
     private List<String> usedCities = new ArrayList<>();
@@ -45,6 +47,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        isOnline();
         currentLives = findViewById(R.id.lives);
         btnSpeak = findViewById(R.id.mainButton);
         setLives(initLivesNum);
@@ -55,8 +58,8 @@ public class MainActivity extends Activity {
             startActivityForResult(intent, RESULT_SPEECH);
         });
 
-    }
 
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -84,41 +87,33 @@ public class MainActivity extends Activity {
         new AsyncTask<Void, String, String>() {
             @Override
             protected String doInBackground(Void[] voids) {
-                Boolean valid = true;
-                try {
-                    valid = Boolean.valueOf(doGet(getResources().getString(R.string.VALIDATE_CITY) + currentUserCity));
-                } catch (IOException e) {
-                    Toast.makeText(
-                            getApplicationContext(),
-                            getResources().getString(R.string.CONNECTION_ERROR_LOG),Toast.LENGTH_LONG)
-                            .show();
-                }
-                if (valid){
-                    lastUserLetter = currentUserCity.substring(currentUserCity.length() - 1).toUpperCase();
-                    String s = "";
-                    try {
-                        s = doGet(getResources().getString(R.string.GET_CITY) + lastUserLetter);
-                    } catch (IOException e) {
-                        Toast.makeText(
-                                getApplicationContext(),
-                                getResources().getString(R.string.CONNECTION_ERROR_LOG),Toast.LENGTH_LONG)
-                                .show();
+                String status  = doGet(getResources().getString(R.string.HEALTH));
+                if (status.equals("UP")){
+                    Boolean valid = Boolean.valueOf(doGet(getResources().getString(R.string.VALIDATE_CITY) + currentUserCity));
+                    if (valid) {
+                        lastUserLetter = currentUserCity.substring(currentUserCity.length() - 1).toUpperCase();
+                        return doGet(getResources().getString(R.string.GET_CITY) + lastUserLetter);
+                    } else {
+                        return String.valueOf(valid);
                     }
-                    return s;
+
                 }
-                else {
-                    return String.valueOf(valid);
+                else{
+                    Intent myIntent = new Intent(MainActivity.this,NetworkFailsActivity.class);
+                    MainActivity.this.startActivity(myIntent);
+                    throw new AndroidBusinessApiException("Business API currently unavailable ");
+
                 }
+
             }
 
             @Override
             protected void onPostExecute(final String result) {
                 runOnUiThread(() -> textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
                     Log.e("TTS", "OnPostExecute with result: " + result);
-                    if(result.equals("false")){
+                    if (result.equals("false")) {
                         speakOut(getResources().getString(R.string.INCORRECT_CITY_PHRASE));
-                    }
-                    else {
+                    } else {
                         speakOut(result);
                         lastMachineLetter = result.substring(result.length() - 1);
                         usedCities.add(result);
@@ -134,28 +129,30 @@ public class MainActivity extends Activity {
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
 
-    private static String doGet(String url) throws IOException {
-
-        URL obj = new URL(url);
-        HttpURLConnection connection = (HttpURLConnection) obj.openConnection();
-
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
-        connection.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
-        connection.setRequestProperty("Content-Type", "application/json");
-
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String inputLine;
+    private static String doGet(String url) {
         StringBuilder response = new StringBuilder();
+        try {
+            URL obj = new URL(url);
+            HttpURLConnection connection = (HttpURLConnection) obj.openConnection();
 
-        while ((inputLine = bufferedReader.readLine()) != null) {
-            response.append(inputLine);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
+            connection.setRequestProperty("Content-Type", "application/json");
+
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            String inputLine;
+            while ((inputLine = bufferedReader.readLine()) != null) {
+                response.append(inputLine);
+            }
+            bufferedReader.close();
+
+            System.out.println("Response string: " + response.toString());
+
         }
-        bufferedReader.close();
-
-        System.out.println("Response string: " + response.toString());
-
-
+        catch (IOException io){
+            Log.e("WEB-SOCKET","Connection disabled! Check logs!");
+        }
         return response.toString();
     }
 
@@ -182,10 +179,9 @@ public class MainActivity extends Activity {
             }
         }
         //If permission is granted, then go ahead recording audio
-        else if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED) {
-
+        else {
+            ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.RECORD_AUDIO);
         }
     }
 
@@ -203,6 +199,7 @@ public class MainActivity extends Activity {
             }
         }
     }
+
     private void setLives(int lives) {
         currentLives.setText(getResources().getString(R.string.LIVES_TEXT) + lives);
     }
@@ -211,7 +208,7 @@ public class MainActivity extends Activity {
         if (Objects.isNull(city)) {
             return false;
         }
-        if (initLivesNum == 0) {
+        if (initLivesNum < 1) {
             Toast.makeText(getApplicationContext(), "You loose!", Toast.LENGTH_SHORT).show();
             initLivesNum = 5;
             usedCities.clear();
@@ -219,11 +216,11 @@ public class MainActivity extends Activity {
                 Log.e("TTS", "TextToSpeech.LIVES_OVER.");
                 speakOut(getResources().getString(R.string.LOOSE_TEXT));
             });
-            return false;
+            this.onRestart();
         }
 
-        if (Objects.nonNull(lastMachineLetter)){
-            if (!currentUserCity.substring(0, 1).toLowerCase().equals(lastMachineLetter)){
+        if (Objects.nonNull(lastMachineLetter)) {
+            if (!currentUserCity.substring(0, 1).toLowerCase().equals(lastMachineLetter)) {
                 textToSpeech = new TextToSpeech(getApplicationContext(), status -> {
                     Log.e("TTS", "TextToSpeech.IncorrectLastLetter");
                     speakOut(String.format(getResources().getString(R.string.INCORRECT_LAST_LATTER_PHRASE), lastMachineLetter));
@@ -260,8 +257,6 @@ public class MainActivity extends Activity {
         if (textToSpeech != null) {
             textToSpeech.stop();
         }
-        System.out.println("OnsTROP");
-
         super.onStop();
     }
 
@@ -275,9 +270,44 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    @SuppressLint("StaticFieldLeak")
+    public void isOnline() {
+
+        new AsyncTask<Void, Void, Boolean>() {
+
+            @Override
+            protected Boolean doInBackground(Void... voids) {
+                ConnectivityManager cm =
+                        (ConnectivityManager) getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+
+                while (true) {
+                    NetworkInfo activeNetwork = Objects.requireNonNull(cm).getActiveNetworkInfo();
+                    boolean isConnected = Objects.requireNonNull(activeNetwork).isConnected();
+                    try {
+                        this.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    if (isConnected) {
+                        break;
+                    }
+                    Toast.makeText(getApplicationContext(), "No internet connection.. Check it and try again!", Toast.LENGTH_LONG).show();
+
+                }
+                return true;
+            }
+
+
+        };
+    }
 
 
 }
+
+
+
+
+
 
 
 

@@ -3,6 +3,7 @@
     <string name="action_settings">Settings</string>
     <string name="GET_CITY">"https://kezikov-spring-test.herokuapp.com/android/get_city?letter="</string>
     <string name="VALIDATE_CITY">"https://kezikov-spring-test.herokuapp.com/android/validate_city?city="</string>
+    <string name="HEALTH">"https://kezikov-spring-test.herokuapp.com/actuator/health"</string>
     <string name="ON_REPEAT_PHRASE">"It seems you have used this city already. Try another!"</string>
     <string name="INCORRECT_CITY_PHRASE">"Sorry! I dont know this city. Try another one?"</string>
     <string name="INCORRECT_LAST_LATTER_PHRASE">"Hey! you need to say a word which ends on letter: %s"</string>
